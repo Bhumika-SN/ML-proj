@@ -186,3 +186,4 @@ if st.button("Analyze URL"):
                 st.success(label)
 
             st.info(f"Suggestion: {suggestion}")
+            
