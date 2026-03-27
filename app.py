@@ -2,16 +2,22 @@ import streamlit as st
 import pandas as pd
 import re
 import nltk
-import requests
+import time
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from bs4 import BeautifulSoup
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, accuracy_score
+
+# Selenium + WebDriver Manager
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 # Download stopwords
 nltk.download('stopwords')
@@ -22,7 +28,7 @@ stop_words = set(stopwords.words('english'))
 data = pd.read_csv("fake_job_postings.csv")
 data = data.fillna("")
 
-# Combine text
+# Combine text columns
 data["text"] = (
     data["title"] + " " +
     data["company_profile"] + " " +
@@ -61,15 +67,27 @@ y_pred = model.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 cm = confusion_matrix(y_test, y_pred)
 
-# ---------------- URL EXTRACTION ----------------
+# ---------------- URL EXTRACTION (FIXED) ----------------
 def extract_text_from_url(url):
     try:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, "html.parser")
-        paragraphs = soup.find_all("p")
-        text = " ".join([p.get_text() for p in paragraphs])
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+
+        driver.get(url)
+        time.sleep(5)
+
+        body = driver.find_element(By.TAG_NAME, "body")
+        text = body.text
+
+        driver.quit()
         return text
-    except:
+
+    except Exception as e:
         return ""
 
 # ---------------- PREDICTION ----------------
@@ -87,21 +105,17 @@ def predict_job(text):
 def get_suggestion(text, label, confidence):
     text = text.lower()
 
-    # Strong fake signal
     if label == "FAKE 🚨":
-        return "❌ Do NOT apply – this job is likely fraudulent"
+        return "❌ Do NOT apply – likely fraudulent"
 
-    # Suspicious keywords
     if any(word in text for word in ["earn", "quick money", "no experience", "easy money"]):
-        return "🚨 High Risk – avoid or verify carefully"
+        return "🚨 High Risk – verify carefully"
 
-    # Outdated signals
-    if any(word in text for word in ["months ago", "year ago", "old", "expired"]):
-        return "⚠️ Possibly outdated – check job status before applying"
+    if any(word in text for word in ["months ago", "year ago", "expired", "old"]):
+        return "⚠️ Possibly outdated – check before applying"
 
-    # Low confidence
     if confidence < 0.6:
-        return "⚠️ Not sure – verify company and details"
+        return "⚠️ Low confidence – verify manually"
 
     return "✅ Safe to apply"
 
@@ -146,7 +160,7 @@ if st.button("Analyze Job"):
 
 # ---------------- URL INPUT ----------------
 
-st.write("Or enter job link:")
+st.write("Or paste job link:")
 
 url_input = st.text_input("Job URL")
 
@@ -154,10 +168,11 @@ if st.button("Analyze URL"):
     if url_input.strip() == "":
         st.warning("Please enter a URL")
     else:
-        extracted_text = extract_text_from_url(url_input)
+        with st.spinner("Extracting data from website..."):
+            extracted_text = extract_text_from_url(url_input)
 
         if extracted_text == "":
-            st.error("Could not extract data from URL")
+            st.error("❌ Could not extract data (site may block scraping)")
         else:
             label, confidence = predict_job(extracted_text)
             suggestion = get_suggestion(extracted_text, label, confidence)
