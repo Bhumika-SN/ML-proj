@@ -1,0 +1,10 @@
+streamlit
+flask
+flask-cors
+scikit-learn
+pandas
+nltk
+selenium
+webdriver-manager
+matplotlib
+seaborn
