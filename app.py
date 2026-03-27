@@ -19,10 +19,10 @@ nltk.download('stopwords')
 # ---------------- DATA ----------------
 stop_words = set(stopwords.words('english'))
 
-data = pd.read_csv("fake_job_postings.csv")  # your dataset
+data = pd.read_csv("fake_job_postings.csv")
 data = data.fillna("")
 
-# Combine text columns
+# Combine text
 data["text"] = (
     data["title"] + " " +
     data["company_profile"] + " " +
@@ -30,7 +30,6 @@ data["text"] = (
     data["requirements"]
 )
 
-# Target
 y = data["fraudulent"]
 
 # ---------------- CLEANING ----------------
@@ -67,10 +66,8 @@ def extract_text_from_url(url):
     try:
         response = requests.get(url)
         soup = BeautifulSoup(response.text, "html.parser")
-
         paragraphs = soup.find_all("p")
         text = " ".join([p.get_text() for p in paragraphs])
-
         return text
     except:
         return ""
@@ -84,11 +81,33 @@ def predict_job(text):
     confidence = max(proba)
 
     label = "FAKE 🚨" if result[0] == 1 else "REAL ✅"
-    return f"{label} (Confidence: {confidence:.2f})"
+    return label, confidence
+
+# ---------------- SUGGESTION SYSTEM ----------------
+def get_suggestion(text, label, confidence):
+    text = text.lower()
+
+    # Strong fake signal
+    if label == "FAKE 🚨":
+        return "❌ Do NOT apply – this job is likely fraudulent"
+
+    # Suspicious keywords
+    if any(word in text for word in ["earn", "quick money", "no experience", "easy money"]):
+        return "🚨 High Risk – avoid or verify carefully"
+
+    # Outdated signals
+    if any(word in text for word in ["months ago", "year ago", "old", "expired"]):
+        return "⚠️ Possibly outdated – check job status before applying"
+
+    # Low confidence
+    if confidence < 0.6:
+        return "⚠️ Not sure – verify company and details"
+
+    return "✅ Safe to apply"
 
 # ---------------- UI ----------------
 
-st.title("🧠 Fake Job Detection System")
+st.title("🧠 Fake Job Detection + Smart Suggestion System")
 
 st.subheader(f"📊 Model Accuracy: {accuracy:.2f}")
 
@@ -108,16 +127,22 @@ st.write("Enter job description:")
 
 user_input = st.text_area("Job Description")
 
-if st.button("Predict from Text"):
+if st.button("Analyze Job"):
     if user_input.strip() == "":
         st.warning("Please enter some text")
     else:
-        result = predict_job(user_input)
+        label, confidence = predict_job(user_input)
+        suggestion = get_suggestion(user_input, label, confidence)
 
-        if "FAKE" in result:
-            st.error(f"🚨 {result}")
+        st.subheader(f"Prediction: {label}")
+        st.write(f"Confidence: {confidence:.2f}")
+
+        if "FAKE" in label:
+            st.error(label)
         else:
-            st.success(f"✅ {result}")
+            st.success(label)
+
+        st.info(f"Suggestion: {suggestion}")
 
 # ---------------- URL INPUT ----------------
 
@@ -125,7 +150,7 @@ st.write("Or enter job link:")
 
 url_input = st.text_input("Job URL")
 
-if st.button("Predict from URL"):
+if st.button("Analyze URL"):
     if url_input.strip() == "":
         st.warning("Please enter a URL")
     else:
@@ -134,9 +159,15 @@ if st.button("Predict from URL"):
         if extracted_text == "":
             st.error("Could not extract data from URL")
         else:
-            result = predict_job(extracted_text)
+            label, confidence = predict_job(extracted_text)
+            suggestion = get_suggestion(extracted_text, label, confidence)
 
-            if "FAKE" in result:
-                st.error(f"🚨 {result}")
+            st.subheader(f"Prediction: {label}")
+            st.write(f"Confidence: {confidence:.2f}")
+
+            if "FAKE" in label:
+                st.error(label)
             else:
-                st.success(f"✅ {result}")
+                st.success(label)
+
+            st.info(f"Suggestion: {suggestion}")
